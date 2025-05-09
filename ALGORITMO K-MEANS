@@ -1,0 +1,208 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
+
+# Configuración de estilo
+try:
+    plt.style.use('seaborn-v0_8')
+except:
+    plt.style.use('ggplot')
+
+def load_data(filepath):
+    """Carga los datos desde un archivo CSV."""
+    try:
+        data = pd.read_csv(filepath)
+        print("Datos cargados correctamente")
+        print(data.head())
+        return data
+    except Exception as e:
+        print(f"Error al cargar el archivo CSV: {e}")
+        return None
+
+def preprocess_data(data):
+    """Preprocesamiento y escalado de datos."""
+    try:
+        selected_data = data[['Year', 'Percentage']].copy()
+        scaler = StandardScaler()
+        scaled_data = scaler.fit_transform(selected_data)
+        return scaled_data, scaler, data
+    except Exception as e:
+        print(f"Error en preprocesamiento: {e}")
+        return None, None, None
+
+def apply_kmeans(data, n_clusters=3):
+    """Aplicación del algoritmo K-Means."""
+    try:
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=15)
+        kmeans.fit(data)
+        print(f"Modelo K-Means creado con {n_clusters} clusters")
+        return kmeans
+    except Exception as e:
+        print(f"Error en K-Means: {e}")
+        return None
+
+def plot_clusters(data, kmeans, scaler, original_data, palette):
+    """Visualización de clusters con layout mejorado."""
+    try:
+        fig = plt.figure(figsize=(18, 8))
+        gs = fig.add_gridspec(1, 3, width_ratios=[3, 1, 1])
+        ax1 = fig.add_subplot(gs[0])  
+        ax2 = fig.add_subplot(gs[1])  # Panel de colores
+        ax3 = fig.add_subplot(gs[2])  # Panel de detalles
+        
+        # Transformación inversa para obtener valores originales
+        original_values = scaler.inverse_transform(data)
+        labels = kmeans.labels_
+        centroids = scaler.inverse_transform(kmeans.cluster_centers_)
+        
+        # Asignar colores manualmente usando la paleta
+        colors = [palette[label] for label in labels]
+        
+        # Gráfico de dispersión con colores manuales
+        scatter = ax1.scatter(original_values[:, 0], original_values[:, 1], 
+                            c=colors, alpha=0.7, s=100, edgecolor='k')
+        
+        # Graficar centroides
+        centroid_plot = ax1.scatter(centroids[:, 0], centroids[:, 1], marker='X', s=300, 
+                                 c='red', label='Centroides')
+        
+        # Configuración del gráfico principal
+        ax1.set_title('Distribución de Clusters - Acceso a Internet en Escuelas', fontsize=16)
+        ax1.set_xlabel('Año', fontsize=12)
+        ax1.set_ylabel('Porcentaje de escuelas con acceso a internet', fontsize=12)
+        ax1.set_xlim(2014, 2025)
+        ax1.set_ylim(0, 100)
+        ax1.grid(True, alpha=0.3)
+
+        # Panel de colores (centro)
+        ax2.axis('off')
+        ax2.set_title('Identificación de Clusters', fontsize=14, pad=20)
+        
+        # Mostrar colores de clusters
+        for i, color in enumerate(palette):
+            ax2.scatter([], [], color=color, label=f'Cluster {i}', s=300)
+        
+        # Mostrar leyenda de centroides
+        ax2.scatter([], [], marker='X', c='red', label='Centroides', s=100)
+        
+        ax2.legend(loc='center', frameon=True, fontsize=12)
+        
+        # Panel de detalles (derecha)
+        ax3.axis('off')
+        ax3.set_title('Detalles por Cluster', fontsize=14, pad=20)
+        
+        # Calcular estadísticas para cada cluster
+        detail_text = ""
+        for i in range(len(centroids)):
+            cluster_data = original_data[labels == i]
+            year_range = f"{int(cluster_data['Year'].min())}-{int(cluster_data['Year'].max())}"
+            perc_range = f"{cluster_data['Percentage'].min():.1f}%-{cluster_data['Percentage'].max():.1f}%"
+            
+            detail_text += (
+                f"Cluster {i}:\n"
+                f"• Periodo: {year_range}\n"
+                f"• Rango %: {perc_range}\n\n"
+            )
+        
+        ax3.text(0.1, 0.5, detail_text, fontsize=12, va='center')
+        
+        plt.tight_layout()
+        plt.show()
+        
+    except Exception as e:
+        print(f"Error al graficar clusters: {e}")
+
+def plot_bar_chart(original_data, labels, palette):
+    """Gráfico de barras usando la misma paleta de colores."""
+    try:
+        plt.figure(figsize=(12, 7))
+        
+        # Calcular estadísticas
+        cluster_stats = original_data.groupby(labels).agg({
+            'Percentage': ['mean', 'min', 'max'],
+            'Year': ['min', 'max']
+        }).reset_index()
+        
+        # Reorganizar columnas
+        cluster_stats.columns = ['Cluster', 'AvgPercentage', 'MinPercentage', 'MaxPercentage',
+                               'MinYear', 'MaxYear']
+        
+        # Gráfico de barras
+        bars = plt.bar(cluster_stats['Cluster'], cluster_stats['AvgPercentage'], 
+                      color=palette, alpha=0.7, edgecolor='k')
+        
+        # Etiquetas y detalles
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            # Porcentaje encima de la barra
+            plt.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{height:.1f}%', ha='center', va='bottom', fontsize=12)
+            
+            # Detalles del cluster debajo
+            details = (
+                f"Años: {int(cluster_stats['MinYear'][i])}-{int(cluster_stats['MaxYear'][i])}\n"
+                f"Rango: {cluster_stats['MinPercentage'][i]:.1f}%-{cluster_stats['MaxPercentage'][i]:.1f}%"
+            )
+            plt.text(bar.get_x() + bar.get_width()/2., -15, details,
+                    ha='center', va='top', fontsize=10)
+        
+        plt.title('Acceso Promedio por Cluster', fontsize=16, pad=20)
+        plt.xlabel('Número de clústeres asignados', fontsize=12)
+        plt.ylabel('Porcentaje promedio de acceso a internet', fontsize=12)
+        plt.xticks(cluster_stats['Cluster'], 
+                  [f'Cluster {i}' for i in cluster_stats['Cluster']])
+        plt.grid(axis='y', alpha=0.3)
+        plt.ylim(0, 100)
+        plt.tight_layout()
+        plt.show()
+        
+    except Exception as e:
+        print(f"Error en gráfico de barras: {e}")
+
+def main():
+    # Configuración
+    FILEPATH = "internet_access_data.csv"
+    N_CLUSTERS = 3
+    
+    # Definir paleta de colores única para todas las gráficas
+    cluster_palette = sns.color_palette("viridis", n_colors=N_CLUSTERS)
+    
+    # Pipeline de análisis
+    data = load_data(FILEPATH)
+    if data is None: return
+    
+    scaled_data, scaler, original_data = preprocess_data(data)
+    if scaled_data is None: return
+    
+    print("\nDeterminando número óptimo de clusters...")
+    inertias = []
+    for k in range(1, 8):
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=15)
+        kmeans.fit(scaled_data)
+        inertias.append(kmeans.inertia_)
+    
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, 8), inertias, marker='o')
+    plt.title('Método del Codo', fontsize=14)
+    plt.xlabel('Número de Clusters')
+    plt.ylabel('Inercia')
+    plt.grid(True)
+    plt.show()
+    
+    print(f"\nCreando modelo con {N_CLUSTERS} clusters...")
+    kmeans = apply_kmeans(scaled_data, N_CLUSTERS)
+    if kmeans is None: return
+    
+    print("\nVisualizando resultados...")
+    plot_clusters(scaled_data, kmeans, scaler, original_data, cluster_palette)
+    plot_bar_chart(original_data, kmeans.labels_, cluster_palette)
+    
+    print("\nMetricas de evaluación:")
+    print(f"Inercia: {kmeans.inertia_:.2f}")
+    print(f"Coef. Silueta: {silhouette_score(scaled_data, kmeans.labels_):.2f}")
+
+if __name__ == "__main__":
+    main()
